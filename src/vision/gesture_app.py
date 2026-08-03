@@ -1,36 +1,3 @@
-"""
-Real-time human gesture/action recognition from a webcam.
-
-Pipeline:
-  camera frame -> MediaPipe PoseLandmarker (multi-person) -> per-person
-  landmark history buffer -> rule-based gesture classifiers
-  (raise_hand, wave, clap, hug) -> overlay + display.
-
-Why MediaPipe instead of YOLO-Pose:
-  - Runs real-time on CPU (no GPU / torch / ultralytics dependency needed).
-  - The new Tasks API (`PoseLandmarker`) supports multi-person detection
-    via `num_poses`, which "hug" needs (it's a two-person interaction).
-  - 33 body landmarks per person is more than enough for these gestures.
-  YOLO-Pose is a solid alternative if you need heavier crowd scenes or
-  already have a YOLO/torch pipeline, but it's overkill here and needs a
-  GPU to stay real-time.
-
-Gestures are detected with simple, explainable geometry rules over a
-sliding window of landmarks (no training data required):
-  - raise_hand : wrist above shoulder line, sustained a few frames.
-  - wave       : raised wrist oscillating left-right (side to side).
-  - clap       : both wrists rapidly closing to near-zero distance in
-                 front of the chest.
-  - hug        : two tracked people whose torsos come close together and
-                 at least one wrist reaches near the other's torso,
-                 sustained for a short duration.
-
-All distance thresholds are normalized by shoulder width, so detection
-is robust to how far the person stands from the camera.
-
-Author: production-ready reference implementation.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -48,72 +15,57 @@ try:
     import mediapipe as mp
     from mediapipe.tasks import python as mp_python
     from mediapipe.tasks.python import vision as mp_vision
-except ImportError as exc:  # pragma: no cover
+except ImportError as exc:
     raise SystemExit(
         "mediapipe is not installed. Run: pip install -r requirements.txt"
     ) from exc
 
 
-# --------------------------------------------------------------------------- #
-# Configuration
-# --------------------------------------------------------------------------- #
-
 @dataclass
 class Config:
-    # Model
     model_path: str = "pose_landmarker_lite.task"
     max_people: int = 4
     min_detection_confidence: float = 0.5
     min_presence_confidence: float = 0.5
     min_tracking_confidence: float = 0.5
 
-    # Camera
     camera_index: int = 0
     frame_width: int = 960
     frame_height: int = 540
 
-    # History buffer (frames kept per tracked person)
-    history_len: int = 30  # ~1 second at 30 FPS
+    history_len: int = 30
 
-    # Tracking (simple centroid tracker)
-    track_match_max_dist: float = 0.15   # normalized coords
+    track_match_max_dist: float = 0.15
     track_max_missed_frames: int = 15
 
-    # --- Gesture thresholds (normalized / shoulder-width relative) ---
-    raise_hand_margin: float = 0.03         # wrist must be this much above shoulder (norm y)
-    raise_hand_min_frames: int = 5          # sustained frames to confirm
+    raise_hand_margin: float = 0.03
+    raise_hand_min_frames: int = 5
 
-    wave_window: int = 15                   # frames used to detect oscillation
-    wave_min_reversals: int = 2             # direction changes in the window
-    wave_min_amplitude_ratio: float = 0.35  # relative to shoulder width
+    wave_window: int = 15
+    wave_min_reversals: int = 2
+    wave_min_amplitude_ratio: float = 0.35
 
-    clap_close_ratio: float = 0.45          # wrist-wrist dist < ratio*shoulder_width => "closed"
-    clap_open_ratio: float = 1.0            # dist that must have been exceeded shortly before
-    clap_window: int = 10                   # frames to look for the closing motion
-    clap_cooldown_sec: float = 0.6          # avoid repeated triggers
+    clap_close_ratio: float = 0.45
+    clap_open_ratio: float = 1.0
+    clap_window: int = 10
+    clap_cooldown_sec: float = 0.6
 
-    hug_torso_ratio: float = 1.3            # torso-center distance < ratio*avg shoulder width
-    hug_wrist_reach_ratio: float = 0.9      # wrist-to-other-torso distance threshold
-    hug_min_frames: int = 10                # sustained frames required
+    hug_torso_ratio: float = 1.3
+    hug_wrist_reach_ratio: float = 0.9
+    hug_min_frames: int = 10
     hug_cooldown_sec: float = 1.0
 
-    # Display
-    label_min_display_sec: float = 0.8      # keep a gesture label visible at least this long
+    label_min_display_sec: float = 0.8
 
 
 CFG = Config()
 
-# MediaPipe BlazePose landmark indices we use.
 NOSE = 0
 L_SHOULDER, R_SHOULDER = 11, 12
 L_ELBOW, R_ELBOW = 13, 14
 L_WRIST, R_WRIST = 15, 16
 L_HIP, R_HIP = 23, 24
 
-# Hardcoded BlazePose (33-landmark) skeleton topology. We define this
-# ourselves instead of importing `mediapipe.solutions.pose` because newer
-# mediapipe releases (Tasks-API-only builds) no longer ship the legacy
-# `solutions` module.
 POSE_CONNECTIONS: List[Tuple[int, int]] = [
     (0, 1), (1, 2), (2, 3), (3, 7), (0, 4), (4, 5), (5, 6), (6, 8),
     (9, 10), (11, 12), (11, 13), (13, 15), (15, 17), (15, 19), (15, 21),
@@ -133,10 +85,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("gesture_app")
 
-
-# --------------------------------------------------------------------------- #
-# Small geometry helpers
-# --------------------------------------------------------------------------- #
 
 Point = Tuple[float, float]
 
@@ -170,10 +118,6 @@ def is_visible(landmarks, idx: int, thresh: float = 0.4) -> bool:
     return vis is None or vis >= thresh
 
 
-# --------------------------------------------------------------------------- #
-# Per-person track: keeps a short history and derives gestures from it
-# --------------------------------------------------------------------------- #
-
 @dataclass
 class PersonTrack:
     track_id: int
@@ -181,12 +125,11 @@ class PersonTrack:
     color: Tuple[int, int, int] = (0, 255, 0)
     last_seen_frame: int = 0
 
-    # gesture state
     raise_hand_streak: int = 0
     hug_streak: int = 0
     last_clap_time: float = 0.0
     last_hug_time: float = 0.0
-    active_labels: Dict[str, float] = field(default_factory=dict)  # label -> expiry timestamp
+    active_labels: Dict[str, float] = field(default_factory=dict)
 
     def update(self, landmarks) -> None:
         self.history.append(landmarks)
@@ -203,19 +146,12 @@ class PersonTrack:
 
 
 class SimpleCentroidTracker:
-    """Very small IOU-free tracker: matches tracks to new detections using
-    the torso-center distance. Good enough for a handful of people in
-    frame; swap for ByteTrack/DeepSORT if you need robustness to heavy
-    occlusion or many simultaneous people."""
-
     def __init__(self) -> None:
         self._tracks: Dict[int, PersonTrack] = {}
         self._next_id = 0
         self._frame_idx = 0
 
     def update(self, detections: List) -> Dict[int, object]:
-        """detections: list of landmark-lists for this frame.
-        Returns {track_id: landmarks} for the people matched this frame."""
         self._frame_idx += 1
         det_centers = [torso_center(d) for d in detections]
 
@@ -223,7 +159,6 @@ class SimpleCentroidTracker:
         unmatched_dets = set(range(len(detections)))
         assignment: Dict[int, int] = {}
 
-        # Greedy nearest-neighbor matching.
         pairs = []
         for tid, track in self._tracks.items():
             if track.latest is None:
@@ -251,7 +186,6 @@ class SimpleCentroidTracker:
             track.last_seen_frame = self._frame_idx
             result[tid] = detections[di]
 
-        # New tracks for unmatched detections.
         for di in unmatched_dets:
             tid = self._next_id
             self._next_id += 1
@@ -261,7 +195,6 @@ class SimpleCentroidTracker:
             self._tracks[tid] = track
             result[tid] = detections[di]
 
-        # Drop stale tracks.
         stale = [
             tid for tid, t in self._tracks.items()
             if self._frame_idx - t.last_seen_frame > CFG.track_max_missed_frames
@@ -275,10 +208,6 @@ class SimpleCentroidTracker:
     def tracks(self) -> Dict[int, PersonTrack]:
         return self._tracks
 
-
-# --------------------------------------------------------------------------- #
-# Gesture classifiers (rule-based, operate on a track's history)
-# --------------------------------------------------------------------------- #
 
 def detect_raise_hand(track: PersonTrack) -> Optional[str]:
     lm = track.latest
@@ -319,7 +248,6 @@ def detect_wave(track: PersonTrack) -> Optional[str]:
     for wrist_idx, shoulder_idx in ((L_WRIST, L_SHOULDER), (R_WRIST, R_SHOULDER)):
         if not is_visible(lm, wrist_idx):
             continue
-        # Must currently be raised to count as a wave (vs. a low-hand swing).
         if lm[wrist_idx].y >= lm[shoulder_idx].y - CFG.raise_hand_margin:
             continue
 
@@ -331,7 +259,6 @@ def detect_wave(track: PersonTrack) -> Optional[str]:
         if amplitude < CFG.wave_min_amplitude_ratio:
             continue
 
-        # Count direction reversals in the x trajectory.
         reversals = 0
         direction = 0
         for a, b in zip(xs, xs[1:]):
@@ -380,9 +307,8 @@ def detect_clap(track: PersonTrack, now: float) -> Optional[str]:
 
 
 def detect_hug(track_a: PersonTrack, track_b: PersonTrack, now: float) -> bool:
-    """Pairwise check between two tracked people."""
     if now - max(track_a.last_hug_time, track_b.last_hug_time) < CFG.hug_cooldown_sec:
-        pass  # cooldown only blocks re-labeling, not the underlying streak logic
+        pass
 
     lm_a, lm_b = track_a.latest, track_b.latest
     if lm_a is None or lm_b is None:
@@ -416,10 +342,6 @@ def detect_hug(track_a: PersonTrack, track_b: PersonTrack, now: float) -> bool:
         return True
     return False
 
-
-# --------------------------------------------------------------------------- #
-# Drawing
-# --------------------------------------------------------------------------- #
 
 def draw_skeleton(frame: np.ndarray, landmarks, color: Tuple[int, int, int]) -> None:
     h, w = frame.shape[:2]
@@ -455,10 +377,6 @@ def draw_hug_label(frame: np.ndarray, track_a: PersonTrack, track_b: PersonTrack
     cv2.putText(frame, "HUG", (x - 25, y),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
 
-
-# --------------------------------------------------------------------------- #
-# Main application
-# --------------------------------------------------------------------------- #
 
 def ensure_model_present(path: str) -> None:
     if os.path.exists(path):
@@ -514,7 +432,7 @@ def main() -> None:
                 log.warning("Failed to read frame from camera; stopping.")
                 break
 
-            frame = cv2.flip(frame, 1)  # mirror view feels natural
+            frame = cv2.flip(frame, 1)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
             timestamp_ms = int((time.time() - start_time) * 1000)
@@ -539,7 +457,6 @@ def main() -> None:
 
                 draw_track_label(frame, track, now)
 
-            # Pairwise hug check across all currently visible tracks.
             ids = list(matched.keys())
             for i in range(len(ids)):
                 for j in range(i + 1, len(ids)):
@@ -549,7 +466,6 @@ def main() -> None:
                         tb.set_label("hug", now)
                         draw_hug_label(frame, ta, tb)
 
-            # FPS overlay.
             tick = time.time()
             inst_fps = 1.0 / max(tick - prev_tick, 1e-6)
             fps_smooth = fps_smooth * 0.9 + inst_fps * 0.1
