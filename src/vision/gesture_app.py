@@ -50,12 +50,16 @@ class Config:
     clap_window: int = 10
     clap_cooldown_sec: float = 0.6
 
-    hug_torso_ratio: float = 1.3
-    hug_wrist_reach_ratio: float = 0.9
-    hug_min_frames: int = 10
+    # "hug" = one person opening both arms wide toward the camera.
+    hug_wrist_span_ratio: float = 2.0   # wrist-to-wrist span >= this * shoulder width
+    hug_open_margin: float = 0.02       # each wrist this far outside its shoulder (norm. x)
+    hug_height_slack: float = 0.4       # wrists allowed this * torso height above shoulders
+    hug_min_frames: int = 6
     hug_cooldown_sec: float = 1.0
 
     label_min_display_sec: float = 0.8
+
+    debug_hug: bool = True
 
 
 CFG = Config()
@@ -96,10 +100,6 @@ def to_xy(landmarks, idx: int) -> Point:
 
 def dist(a: Point, b: Point) -> float:
     return float(np.hypot(a[0] - b[0], a[1] - b[1]))
-
-
-def midpoint(a: Point, b: Point) -> Point:
-    return ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
 
 
 def shoulder_width(landmarks) -> float:
@@ -306,41 +306,59 @@ def detect_clap(track: PersonTrack, now: float) -> Optional[str]:
     return None
 
 
-def detect_hug(track_a: PersonTrack, track_b: PersonTrack, now: float) -> bool:
-    if now - max(track_a.last_hug_time, track_b.last_hug_time) < CFG.hug_cooldown_sec:
-        pass
+def detect_hug(track: PersonTrack, now: float) -> Optional[str]:
+    """One person opening both arms wide, as if to hug the camera."""
+    lm = track.latest
+    if lm is None:
+        return None
 
-    lm_a, lm_b = track_a.latest, track_b.latest
-    if lm_a is None or lm_b is None:
-        return False
+    if now - track.last_hug_time < CFG.hug_cooldown_sec:
+        return None
 
-    sw = (shoulder_width(lm_a) + shoulder_width(lm_b)) / 2.0
-    center_a, center_b = torso_center(lm_a), torso_center(lm_b)
-    torso_close = dist(center_a, center_b) < CFG.hug_torso_ratio * sw
+    needed = (L_WRIST, R_WRIST, L_SHOULDER, R_SHOULDER, L_HIP, R_HIP)
+    if not all(is_visible(lm, i) for i in needed):
+        track.hug_streak = 0
+        return None
 
-    reach = False
-    if torso_close:
-        for wrist_idx in (L_WRIST, R_WRIST):
-            if is_visible(lm_a, wrist_idx):
-                if dist(to_xy(lm_a, wrist_idx), center_b) < CFG.hug_wrist_reach_ratio * sw:
-                    reach = True
-            if is_visible(lm_b, wrist_idx):
-                if dist(to_xy(lm_b, wrist_idx), center_a) < CFG.hug_wrist_reach_ratio * sw:
-                    reach = True
+    sw = shoulder_width(lm)
+    l_wrist, r_wrist = to_xy(lm, L_WRIST), to_xy(lm, R_WRIST)
+    l_sh, r_sh = to_xy(lm, L_SHOULDER), to_xy(lm, R_SHOULDER)
 
-    condition = torso_close and reach
-    if condition:
-        track_a.hug_streak += 1
-        track_b.hug_streak += 1
-    else:
-        track_a.hug_streak = 0
-        track_b.hug_streak = 0
+    span = dist(l_wrist, r_wrist) / sw
+    wide = span >= CFG.hug_wrist_span_ratio
+    open_out = (
+        l_wrist[0] > l_sh[0] + CFG.hug_open_margin
+        and r_wrist[0] < r_sh[0] - CFG.hug_open_margin
+    )
 
-    if track_a.hug_streak >= CFG.hug_min_frames and track_b.hug_streak >= CFG.hug_min_frames:
-        track_a.last_hug_time = now
-        track_b.last_hug_time = now
-        return True
-    return False
+    shoulder_y = (l_sh[1] + r_sh[1]) / 2.0
+    hip_y = (to_xy(lm, L_HIP)[1] + to_xy(lm, R_HIP)[1]) / 2.0
+    torso_h = max(hip_y - shoulder_y, 1e-4)
+    top = shoulder_y - CFG.hug_height_slack * torso_h
+    at_height = (
+        top <= l_wrist[1] <= hip_y and top <= r_wrist[1] <= hip_y
+    )
+
+    ok = wide and open_out and at_height
+
+    if CFG.debug_hug:
+        log.info(
+            "HUG? id=%d span/sw=%.2f (thr>=%.2f) wide=%s open_out=%s "
+            "at_height=%s streak=%d",
+            track.track_id, span, CFG.hug_wrist_span_ratio, wide,
+            open_out, at_height, track.hug_streak,
+        )
+
+    if not ok:
+        track.hug_streak = 0
+        return None
+
+    track.hug_streak += 1
+    if track.hug_streak >= CFG.hug_min_frames:
+        track.last_hug_time = now
+        track.hug_streak = 0
+        return "hug"
+    return None
 
 
 def draw_skeleton(frame: np.ndarray, landmarks, color: Tuple[int, int, int]) -> None:
@@ -365,17 +383,6 @@ def draw_track_label(frame: np.ndarray, track: PersonTrack, now: float) -> None:
     text = f"ID {track.track_id}" + (f" | {' + '.join(labels)}" if labels else "")
     cv2.putText(frame, text, (max(x, 5), max(y, 15)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, track.color, 2, cv2.LINE_AA)
-
-
-def draw_hug_label(frame: np.ndarray, track_a: PersonTrack, track_b: PersonTrack) -> None:
-    if track_a.latest is None or track_b.latest is None:
-        return
-    h, w = frame.shape[:2]
-    ca, cb = torso_center(track_a.latest), torso_center(track_b.latest)
-    mx, my = midpoint(ca, cb)
-    x, y = int(mx * w), int(my * h)
-    cv2.putText(frame, "HUG", (x - 25, y),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2, cv2.LINE_AA)
 
 
 def ensure_model_present(path: str) -> None:
@@ -451,20 +458,12 @@ def main() -> None:
                     detect_raise_hand(track),
                     detect_wave(track),
                     detect_clap(track, now),
+                    detect_hug(track, now),
                 ):
                     if label:
                         track.set_label(label, now)
 
                 draw_track_label(frame, track, now)
-
-            ids = list(matched.keys())
-            for i in range(len(ids)):
-                for j in range(i + 1, len(ids)):
-                    ta, tb = tracker.tracks[ids[i]], tracker.tracks[ids[j]]
-                    if detect_hug(ta, tb, now):
-                        ta.set_label("hug", now)
-                        tb.set_label("hug", now)
-                        draw_hug_label(frame, ta, tb)
 
             tick = time.time()
             inst_fps = 1.0 / max(tick - prev_tick, 1e-6)
