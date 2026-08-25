@@ -68,8 +68,7 @@ async def gestures_ws(websocket: WebSocket) -> None:
 
             now = time.time()
             if now - last_processed < min_interval:
-                # Client is sending faster than we process; drop this frame
-                # instead of queueing work the server can never catch up on.
+
                 continue
             last_processed = now
 
@@ -97,8 +96,7 @@ async def gestures_ws(websocket: WebSocket) -> None:
         log.info("Client disconnected: %s", client)
 
 
-# backend/app/main.py -> repo_root/frontend, in both local dev and the
-# Docker image (which mirrors the repo's backend/ + frontend/ layout).
+
 _frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
 if _frontend_dir.is_dir():
     app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
