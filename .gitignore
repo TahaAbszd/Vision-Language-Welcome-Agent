@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Virtualenvs (this repo had a 356MB venv accidentally left at src/.vision/,
+# recreate it with `python3 -m venv` instead of committing one)
+.venv/
+venv/
+env/
+src/.vision/
+
+# Env files / secrets
+.env
+.env.*
+!.env.example
+
+# OS cruft
+.DS_Store

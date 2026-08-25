@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Real-Time Gesture Recognition</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Real-Time Gesture Recognition</h1>
+    <p class="subtitle">
+      Your browser captures the camera; the Docker-hosted backend runs pose
+      estimation and gesture detection over a WebSocket. No container ever
+      touches your webcam directly.
+    </p>
+  </header>
+
+  <main>
+    <div class="stage">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="overlay"></canvas>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn">Start camera</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <span id="statusDot" class="status-dot offline"></span>
+      <span id="statusText">disconnected</span>
+    </div>
+
+    <dl class="stats">
+      <div><dt>Client FPS</dt><dd id="clientFps">–</dd></div>
+      <div><dt>Server FPS</dt><dd id="serverFps">–</dd></div>
+      <div><dt>Processing</dt><dd id="processingMs">–</dd></div>
+      <div><dt>People tracked</dt><dd id="peopleCount">–</dd></div>
+    </dl>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

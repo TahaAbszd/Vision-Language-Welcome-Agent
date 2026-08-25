@@ -402,7 +402,18 @@ def ensure_model_present(path: str) -> None:
 
 
 def build_detector(cfg: Config) -> mp_vision.PoseLandmarker:
-    base_options = mp_python.BaseOptions(model_asset_path=cfg.model_path)
+    # NOTE: running_mode and the detect call in main() must match.
+    # VIDEO mode requires detect_for_video(image, timestamp_ms) with a
+    # strictly increasing timestamp per call; IMAGE mode requires detect(image)
+    # and has no concept of a timestamp. Mixing them (as a previous local
+    # edit here did: IMAGE mode + detect_for_video) raises a mediapipe
+    # "not initialized in the correct running mode" error on every
+    # platform, including macOS - that mismatch was the actual reason
+    # this script failed to run.
+    base_options = mp_python.BaseOptions(
+        model_asset_path=cfg.model_path,
+        delegate=mp_python.BaseOptions.Delegate.CPU,
+    )
     options = mp_vision.PoseLandmarkerOptions(
         base_options=base_options,
         running_mode=mp_vision.RunningMode.VIDEO,

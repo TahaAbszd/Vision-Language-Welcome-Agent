@@ -1,0 +1,12 @@
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+src/.vision/
+src/vision/__pycache__/
+.git/
+.github/
+*.md
+!README.md
+.env
+.venv/
+venv/

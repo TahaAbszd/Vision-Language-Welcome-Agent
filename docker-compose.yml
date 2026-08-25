@@ -1,0 +1,19 @@
+services:
+  gesture-backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: gesture-recognition-backend:latest
+    ports:
+      - "8000:8000"
+    environment:
+      MAX_PEOPLE: "4"
+      MAX_PROCESS_FPS: "20"
+      LOG_LEVEL: "info"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
