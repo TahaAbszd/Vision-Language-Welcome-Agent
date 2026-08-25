@@ -1,9 +1,4 @@
-"""Landmark helpers shared by tracking and gesture logic.
 
-Kept free of any cv2 / mediapipe import so this module (and everything
-that only depends on it) can be unit tested without the heavy vision
-stack installed.
-"""
 from __future__ import annotations
 
 from typing import Protocol, Sequence, Tuple

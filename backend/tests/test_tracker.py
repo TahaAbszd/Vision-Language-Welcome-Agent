@@ -15,7 +15,6 @@ def test_same_person_keeps_id_across_small_movement():
     assert len(matched1) == 1
     first_id = next(iter(matched1))
 
-    # Nudge everyone a touch — still within track_match_max_dist.
     nudged = make_pose({
         11: (0.41, 0.3, 1.0), 12: (0.61, 0.3, 1.0),
         23: (0.43, 0.55, 1.0), 24: (0.59, 0.55, 1.0),
@@ -48,9 +47,9 @@ def test_stale_track_is_dropped_after_missed_frames():
     tracker.update([make_pose()])
     assert len(tracker.tracks) == 1
 
-    tracker.update([])  # missed frame 1
-    tracker.update([])  # missed frame 2
-    tracker.update([])  # missed frame 3 -> exceeds max_missed_frames, dropped
+    tracker.update([]) 
+    tracker.update([]) 
+    tracker.update([])  
     assert len(tracker.tracks) == 0
 
 

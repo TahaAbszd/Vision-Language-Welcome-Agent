@@ -10,7 +10,7 @@ from .fake_pose import make_pose
 def test_raise_hand_needs_sustained_frames():
     settings = Settings(raise_hand_min_frames=3, raise_hand_margin=0.03)
     track = PersonTrack(track_id=0, history_len=30)
-    pose = make_pose({15: (0.4, 0.2, 1.0)})  # left wrist raised above left shoulder
+    pose = make_pose({15: (0.4, 0.2, 1.0)}) 
     track.update(pose)
 
     assert detect_raise_hand(track, settings) is None
@@ -24,7 +24,7 @@ def test_raise_hand_resets_when_lowered():
 
     track.update(make_pose({15: (0.4, 0.2, 1.0)}))
     detect_raise_hand(track, settings)
-    track.update(make_pose({15: (0.4, 0.5, 1.0)}))  # wrist back down
+    track.update(make_pose({15: (0.4, 0.5, 1.0)})) 
     assert detect_raise_hand(track, settings) is None
     assert track.raise_hand_streak == 0
 
@@ -52,11 +52,11 @@ def test_clap_fires_after_opening_then_closing():
     track = PersonTrack(track_id=0, history_len=30)
 
     frames = [
-        (0.0, 1.0),   # wide open
+        (0.0, 1.0),   
         (0.1, 0.9),
         (0.2, 0.8),
         (0.35, 0.65),
-        (0.49, 0.51),  # hands together
+        (0.49, 0.51),  
     ]
     for lx, rx in frames:
         track.update(make_pose({15: (lx, 0.5, 1.0), 16: (rx, 0.5, 1.0)}))
@@ -72,7 +72,6 @@ def test_clap_respects_cooldown():
         track.update(make_pose({15: (lx, 0.5, 1.0), 16: (rx, 0.5, 1.0)}))
 
     assert detect_clap(track, now=10.0, settings=settings) == "clap"
-    # Same close hands again immediately after: cooldown should suppress it.
     track.update(make_pose({15: (0.49, 0.5, 1.0), 16: (0.51, 0.5, 1.0)}))
     assert detect_clap(track, now=10.1, settings=settings) is None
 
@@ -83,7 +82,7 @@ def test_hug_fires_for_close_pair_with_reaching_wrist():
     hug = HugDetector(settings)
 
     track_a = PersonTrack(track_id=0, history_len=30)
-    track_a.update(make_pose())  # default pose, torso centered near x=0.5
+    track_a.update(make_pose())  
 
     dx = 0.15
     shifted = {

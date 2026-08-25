@@ -12,13 +12,6 @@ from .tracker import CentroidTracker
 
 
 class GestureSession:
-    """Per-WebSocket-connection pipeline: one frame in, one FrameResult out.
-
-    Track state (IDs, rolling landmark history, gesture streaks) lives here
-    so concurrent viewers never share or clobber each other's state; only
-    the underlying mediapipe model is shared, behind a lock, to keep
-    memory bounded.
-    """
 
     def __init__(self, settings: Settings, shared_detector: SharedPoseDetector) -> None:
         self._settings = settings

@@ -9,7 +9,7 @@ try:
     import mediapipe as mp
     from mediapipe.tasks import python as mp_python
     from mediapipe.tasks.python import vision as mp_vision
-except ImportError as exc:  # pragma: no cover - exercised only when mediapipe is missing
+except ImportError as exc: 
     raise RuntimeError(
         "mediapipe is not installed. Run: pip install -r requirements.txt"
     ) from exc
@@ -37,16 +37,7 @@ def ensure_model_present(path: str) -> None:
 
 
 def build_detector(settings: Settings) -> mp_vision.PoseLandmarker:
-    """Builds a stateless single-image pose detector.
 
-    IMAGE running mode (paired with `.detect()`) is used deliberately,
-    rather than VIDEO mode (`.detect_for_video()`): frames arriving over a
-    WebSocket don't have a reliable monotonic capture timestamp, and
-    mixing running modes with the wrong detect call is exactly what made
-    the original desktop version crash. Each frame is treated
-    independently here; temporal smoothing/tracking happens in our own
-    CentroidTracker instead of mediapipe's internal video tracker.
-    """
     ensure_model_present(settings.model_path)
     base_options = mp_python.BaseOptions(
         model_asset_path=settings.model_path,

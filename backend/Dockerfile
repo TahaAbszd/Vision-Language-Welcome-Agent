@@ -14,9 +14,6 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 FROM python:3.11-slim AS runtime
 
-# mediapipe / opencv-python-headless load these native libs at import time
-# even without a display attached (this is a headless container, no X11,
-# no camera device — the browser client owns the webcam, see README).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         libgl1 \

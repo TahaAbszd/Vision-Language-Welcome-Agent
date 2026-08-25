@@ -8,7 +8,7 @@ from pydantic import BaseModel
 class Keypoint(BaseModel):
     x: float
     y: float
-    v: float  # visibility, 0..1
+    v: float  
 
 
 class TrackResult(BaseModel):
@@ -19,7 +19,6 @@ class TrackResult(BaseModel):
 
 
 class FrameResult(BaseModel):
-    """One message sent back to the browser per processed frame."""
 
     tracks: List[TrackResult]
     server_fps: float

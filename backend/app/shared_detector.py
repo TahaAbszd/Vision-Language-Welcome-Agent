@@ -10,16 +10,7 @@ from .pose_backend import build_detector, detect_poses
 
 
 class SharedPoseDetector:
-    """Wraps the single mediapipe PoseLandmarker instance for the process.
 
-    mediapipe's Python Task objects are not documented as safe for
-    concurrent calls from multiple threads, so every call is serialized
-    behind a lock while the actual inference runs in a worker thread (via
-    asyncio.to_thread) so it never blocks the event loop for other
-    connections. For higher throughput than one lock can provide, scale
-    out with multiple worker processes behind a load balancer instead of
-    removing this lock.
-    """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings

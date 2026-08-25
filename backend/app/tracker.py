@@ -45,11 +45,6 @@ class PersonTrack:
 
 
 class CentroidTracker:
-    """Matches detections to tracks frame-to-frame by torso-centroid proximity.
-
-    Deliberately simple: fine for a handful of people. For crowded scenes
-    or heavy occlusion, swap in ByteTrack / DeepSORT instead.
-    """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings

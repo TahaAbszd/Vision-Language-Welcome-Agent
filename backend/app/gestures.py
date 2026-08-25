@@ -1,11 +1,4 @@
-"""Rule-based gesture detectors.
 
-Each detector reads a short rolling history of pose landmarks per tracked
-person and returns a label when its rule fires. All distance thresholds
-are normalized by shoulder width (or average shoulder width, for the
-two-person hug check) so they hold up regardless of how close someone
-stands to the camera.
-"""
 from __future__ import annotations
 
 import logging
@@ -119,11 +112,7 @@ class _PairState:
 
 
 class HugDetector:
-    """Two-person hug: torsos close together and at least one wrist from
-    either person reaching toward the other's torso. Needs per-pair state
-    (streak + cooldown), so unlike the other gestures it isn't a plain
-    function — instantiate one per session alongside the tracker.
-    """
+
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings

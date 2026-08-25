@@ -1,8 +1,6 @@
 "use strict";
 
-// Same 33-point BlazePose connection set the backend draws, kept identical
-// here (see backend/app/landmarks.py) so the skeleton drawn client-side
-// matches what the model actually returned.
+
 const POSE_CONNECTIONS = [
   [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8],
   [9, 10], [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21],
@@ -137,9 +135,7 @@ function drawSkeleton(track) {
 function renderLoop() {
   if (!running) return;
 
-  // Draw the live (mirrored) camera feed every animation frame so the
-  // video looks smooth regardless of the server round-trip time; the
-  // skeleton overlay just reflects whatever the last response was.
+  
   ctx.save();
   ctx.scale(-1, 1);
   ctx.drawImage(video, -overlay.width, 0, overlay.width, overlay.height);
@@ -160,7 +156,7 @@ function renderLoop() {
 
 function maybeSendFrame(now) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  if (awaitingResponse) return; // one frame in flight at a time (backpressure)
+  if (awaitingResponse) return;
   if (now - lastSendTime < 1000 / TARGET_FPS) return;
   lastSendTime = now;
 
